@@ -20,6 +20,7 @@ Requirements:
 */
 
 #include <stdio.h> 
+#include <stdlib.h> 
 
 
 //Constants 
@@ -69,9 +70,28 @@ size_t DEFAULT_GENERATIONS = 10;
 
 // }
 
-// void parseCmdline(){
+void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char* filename){
+    //skip the first assignment 
 
-// }
+    //change it from atoi 
+    if (1 < argc){
+        *rows = atoi(argv[1]);
+    }
+
+    if (2 < argc){
+        *columns = atoi(argv[2]);
+    }
+
+    if (3 < argc){
+        *generations = atoi(argv[3]);
+    }
+
+    if (4 < argc){
+        *filename = 
+    }
+
+    puts("parsed cmdline");
+}
 
 // (void*).....  createInitialState(){
 
@@ -91,9 +111,14 @@ size_t DEFAULT_GENERATIONS = 10;
 // }
 
 
-int main() {
+int main(int argc, char* argv[]){
 
-    // parseCmdline(); 
+    int rows = DEFAULT_ROWS;
+    int columns = DEFAULT_COLUMNS;
+    int generations = DEFAULT_GENERATIONS;
+    char* filename = NULL;
+
+    parseCmdline(argc, argv, &rows, &columns, &generations, filename); 
     // void* thing = createInitialState();
     // for (size_t i = 0; i < generations; i++){
     //     runIteration(); 
@@ -103,7 +128,7 @@ int main() {
     // }
     // cleanup(); 
 
-    puts("hello world"); 
+    puts("ended main loop"); 
 
     return 0; 
 

@@ -30,9 +30,17 @@ size_t DEFAULT_ROWS = 10;
 size_t DEFAULT_COLUMNS = 10;
 size_t DEFAULT_GENERATIONS = 10;
 
+size_t countLiveNeighbors(bool** universe, int i, int j, int rows, int columns);
+void runIteration(bool** universe, int rows, int columns);
+void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char** filename);
+bool** createInitialState(int rows, int columns);
+void cleanup(bool** universe, int rows, int columns);
+void printState(const bool** universe, int rows, int columns);
+void readfile(bool** universe, int rows, int columns, const char* filename);
 
-size_t live_neighbors(bool** universe, int i, int j, int rows, int columns){
-    size_t live_neighbors = 0; 
+//calculate the number of live neighbors next to a cell
+size_t countLiveNeighbors(bool** universe, int i, int j, int rows, int columns){
+    size_t liveNeighbors = 0; 
     for (int delta_i = -1; delta_i < 2; delta_i ++){
         for (int delta_j = -1; delta_j < 2; delta_j ++){
             int newi = delta_i + i; 
@@ -44,23 +52,23 @@ size_t live_neighbors(bool** universe, int i, int j, int rows, int columns){
             }
 
             if (0 <= newi && newi < rows && 0 <= newj && newj < columns){
-                live_neighbors += universe[newi][newj]; 
+                liveNeighbors += universe[newi][newj]; 
             }
         }
     }
-    return live_neighbors; 
+    return liveNeighbors; 
 }
 
 //modify the pointer and memory to simulate the next iteration 
 void runIteration(bool** universe, int rows, int columns){ 
     //use an array to store the next state 
-    bool matrix[rows][columns];
+    bool** matrix = createInitialState(rows, columns); 
 
     //for each index within the array try to do this 
     for (size_t i = 0; i < rows; i ++){
         for (size_t j = 0; j < columns; j ++){ 
             //look to the 8 surrounding and find the number on the sides 
-            size_t liveNeighbor = live_neighbors(universe, i, j, rows, columns);
+            size_t liveNeighbor = countLiveNeighbors(universe, i, j, rows, columns);
 
             //copy over the status of the universe into the local matrix
             matrix[i][j] = universe[i][j]; 
@@ -91,30 +99,52 @@ void runIteration(bool** universe, int rows, int columns){
         }
     }
 
+    cleanup(matrix, rows, columns);
+
 }
 
 void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char** filename){
     //skip the first assignment 
+    char * endptr; 
+    // errno = 0; 
 
-    //change it from atoi
-    //also do some error checking KERRY
     if (1 < argc){
-        *rows = atoi(argv[1]);
+        long row = strtol(argv[1], &endptr, 10);
+        if (row > 0){
+            *rows = row; 
+        }
+        else {
+            puts("Error: rows cannot be 0 or under"); 
+        }
     }
 
     if (2 < argc){
-        *columns = atoi(argv[2]);
+        int column = atoi(argv[2]);
+        if (column > 0){
+            *columns = column; 
+        }
+        else {
+            puts("Error: columns cannot be 0 or under"); 
+        }
     }
 
     if (3 < argc){
-        *generations = atoi(argv[3]);
+        int generation = atoi(argv[3]);
+        if (generation >= 0) {
+            *generations = generation; 
+        }
+        else {
+            puts("Error: generations cannot be 0 or under"); 
+        }
     }
 
     if (4 < argc){
         *filename = argv[4];
     }
 
-    puts("parsed cmdline");
+    if (5 < argc) {
+        puts("Error: too many arguments"); 
+    }
 }
 
 //return a 2d world for booleans 
@@ -123,7 +153,7 @@ bool** createInitialState(int rows, int columns){
 
     for (size_t i = 0; i < rows; i++){
         bool* newRow = (bool*) malloc(sizeof(bool) * columns);
-        memset(newRow, 0, columns); //set all locations to be false 
+        memset(newRow, false, columns); //set all locations to be false 
         world[i] = newRow; 
     }
 
@@ -158,25 +188,25 @@ void printState(const bool** universe, int rows, int columns){
 }
 
 
-void readfile(bool** universe, int rows, int columns, char* filename){
+void readfile(bool** universe, int rows, int columns, const char* filename){
     FILE * lifeFile = fopen(filename, "r"); 
     if (lifeFile == NULL){
         perror("fopen failed"); 
     }
     
     //columns + 1 to accomodate for end of line 
-    char line[columns + 1]; 
-    memset(line, ' ', columns);
+    char* line = malloc(sizeof(char) * (columns + 1)); 
+    memset(line, ' ', sizeof(char) * (columns + 1));
     
     size_t i = 0; 
-    while (fgets(line, sizeof(line), lifeFile) && i < rows){
+    while (fgets(line, columns+1, lifeFile) && i < rows){
         for (size_t j = 0; j < columns; j ++){
             if (line[j] == '*'){
                 universe[i][j] = true; 
             }
         }
 
-        memset(line, ' ', columns); //clear the line 
+        memset(line, ' ', sizeof(char) * (columns + 1)); //clear the line 
         i ++; 
     }
 
@@ -184,6 +214,8 @@ void readfile(bool** universe, int rows, int columns, char* filename){
     if (status != 0){
         perror("fclose failed");
     }
+
+    free(line); 
 
 }
 

@@ -23,6 +23,7 @@ Requirements:
 #include <stdlib.h> 
 #include <stdbool.h> 
 #include <string.h> 
+#include <errno.h> 
 
 
 //Constants 
@@ -30,19 +31,20 @@ size_t DEFAULT_ROWS = 10;
 size_t DEFAULT_COLUMNS = 10;
 size_t DEFAULT_GENERATIONS = 10;
 
-size_t countLiveNeighbors(bool** universe, int i, int j, int rows, int columns);
+size_t countLiveNeighbors(const bool** universe, int i, int j, int rows, int columns);
 void runIteration(bool** universe, int rows, int columns);
 void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char** filename);
 bool** createInitialState(int rows, int columns);
 void cleanup(bool** universe, int rows, int columns);
 void printState(const bool** universe, int rows, int columns);
 void readfile(bool** universe, int rows, int columns, const char* filename);
+int parseInt(char* start);
 
 //calculate the number of live neighbors next to a cell
-size_t countLiveNeighbors(bool** universe, int i, int j, int rows, int columns){
+size_t countLiveNeighbors(const bool** universe, int i, int j, int rows, int columns){
     size_t liveNeighbors = 0; 
-    for (int delta_i = -1; delta_i < 2; delta_i ++){
-        for (int delta_j = -1; delta_j < 2; delta_j ++){
+    for (int delta_i = -1; delta_i <= 1; delta_i ++){
+        for (int delta_j = -1; delta_j <= 1; delta_j ++){
             int newi = delta_i + i; 
             int newj = delta_j + j; 
             
@@ -62,7 +64,7 @@ size_t countLiveNeighbors(bool** universe, int i, int j, int rows, int columns){
 //modify the pointer and memory to simulate the next iteration 
 void runIteration(bool** universe, int rows, int columns){ 
     //use an array to store the next state 
-    bool** matrix = createInitialState(rows, columns); 
+    bool** tempMatrix = createInitialState(rows, columns); 
 
     //for each index within the array try to do this 
     for (size_t i = 0; i < rows; i ++){
@@ -70,23 +72,23 @@ void runIteration(bool** universe, int rows, int columns){
             //look to the 8 surrounding and find the number on the sides 
             size_t liveNeighbor = countLiveNeighbors(universe, i, j, rows, columns);
 
-            //copy over the status of the universe into the local matrix
-            matrix[i][j] = universe[i][j]; 
+            //copy over the status of the universe into the local tempMatrix
+            tempMatrix[i][j] = universe[i][j]; 
             
-            if (matrix[i][j]){
+            if (tempMatrix[i][j]){
                 if (liveNeighbor < 2){
-                    matrix[i][j] = false; 
+                    tempMatrix[i][j] = false; 
                 }
                 else if (liveNeighbor <= 3){
-                    matrix[i][j] = true; 
+                    tempMatrix[i][j] = true; 
                 }
                 else {
-                    matrix[i][j] = false;
+                    tempMatrix[i][j] = false;
                 }
             }
             else {
                 if (liveNeighbor == 3){
-                    matrix[i][j] = true; 
+                    tempMatrix[i][j] = true; 
                 }
             }
         }
@@ -95,47 +97,46 @@ void runIteration(bool** universe, int rows, int columns){
     //copy from local array to universe 
     for (size_t i = 0; i < rows; i ++){
         for (size_t j = 0; j < columns; j ++){
-            universe[i][j] = matrix[i][j];
+            universe[i][j] = tempMatrix[i][j];
         }
     }
 
-    cleanup(matrix, rows, columns);
+    cleanup(tempMatrix, rows, columns);
 
 }
 
-void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char** filename){
-    //skip the first assignment 
-    char * endptr; 
-    // errno = 0; 
+int parseInt(char* start){
+    errno = 0;
+    char * endptr = NULL;
 
-    if (1 < argc){
-        long row = strtol(argv[1], &endptr, 10);
-        if (row > 0){
-            *rows = row; 
+    long value = strtol(start, &endptr, 10);
+    if (errno == 0 && endptr != start){
+        if ((int) value >= 0){
+            return (int) value;
         }
         else {
-            puts("Error: rows cannot be 0 or under"); 
+            puts("Error: values cannot be under 0. Reverting to default."); 
         }
+    }
+    else{
+        puts("Error: unknown error. Reverting to default.");
+    }
+    return DEFAULT_ROWS; 
+}
+
+void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generations, char** filename){
+    //skip the first assignment   
+
+    if (1 < argc){
+        *rows = parseInt(argv[1]);
     }
 
     if (2 < argc){
-        int column = atoi(argv[2]);
-        if (column > 0){
-            *columns = column; 
-        }
-        else {
-            puts("Error: columns cannot be 0 or under"); 
-        }
+        *columns = parseInt(argv[2]);
     }
 
     if (3 < argc){
-        int generation = atoi(argv[3]);
-        if (generation >= 0) {
-            *generations = generation; 
-        }
-        else {
-            puts("Error: generations cannot be 0 or under"); 
-        }
+        *generations = parseInt(argv[3]);
     }
 
     if (4 < argc){
@@ -143,7 +144,7 @@ void parseCmdline(int argc, char* argv[], int* rows, int* columns, int* generati
     }
 
     if (5 < argc) {
-        puts("Error: too many arguments"); 
+        puts("Error: too many arguments. Ignoring extra arguments"); 
     }
 }
 
@@ -195,18 +196,18 @@ void readfile(bool** universe, int rows, int columns, const char* filename){
     }
     
     //columns + 1 to accomodate for end of line 
-    char* line = malloc(sizeof(char) * (columns + 1)); 
-    memset(line, ' ', sizeof(char) * (columns + 1));
+    char* line = NULL;
+    size_t lineLen = 0; //the size of the buffer not the line read 
+    ssize_t read; //the number actually read 
     
     size_t i = 0; 
-    while (fgets(line, columns+1, lifeFile) && i < rows){
-        for (size_t j = 0; j < columns; j ++){
+    while ((read = getline(&line, &lineLen, lifeFile)) != -1 && i < rows){
+        for (size_t j = 0; j < columns && j < read; j ++){
             if (line[j] == '*'){
                 universe[i][j] = true; 
             }
         }
 
-        memset(line, ' ', sizeof(char) * (columns + 1)); //clear the line 
         i ++; 
     }
 

@@ -19,9 +19,9 @@ struct output {
 };
 
 
-bool vector_search(struct output* vector, size_t vector_size, ino_t target_inode){
+bool vector_search(struct output* vector, size_t vector_used, ino_t target_inode){
     size_t vec_index = 0; 
-    for (struct output* ptr = vector; vec_index < vector_size; ptr++){
+    for (struct output* ptr = vector; vec_index < vector_used; ptr++){
         if (ptr->ino == target_inode){
             return true; 
         }
@@ -39,6 +39,10 @@ void vector_append(struct output** vector_ptr, size_t* vector_size_ptr, size_t* 
         //size up by 2 
         *vector_size_ptr *= 2; 
         *vector_ptr = (struct output*) realloc(*vector_ptr, sizeof(struct output) * (*vector_size_ptr)); 
+        if (vector_ptr == NULL) {
+            perror("realloc"); 
+            exit(EXIT_FAILURE);
+        }
     }
 
     struct output* vector = *vector_ptr; 
@@ -54,6 +58,7 @@ size_t traverse(bool all, char *path, struct output **entries_ptr, size_t *cap_p
 
         // If it's not a directory, treat it as a file path
         struct stat sb;
+        //lstat opens corretly 
         if (lstat(path, &sb) == 0) {
             // hardlink handling
             bool repeat = vector_search(*entries_ptr, *used_ptr, sb.st_ino); 
@@ -66,8 +71,6 @@ size_t traverse(bool all, char *path, struct output **entries_ptr, size_t *cap_p
                 .is_dir = false
             };
 
-            if (!item.name) { perror("strdup"); exit(EXIT_FAILURE); }
-            
             if (!repeat){
                 vector_append(entries_ptr, cap_ptr, used_ptr, item);
             }
@@ -76,8 +79,8 @@ size_t traverse(bool all, char *path, struct output **entries_ptr, size_t *cap_p
         }
 
         // Can't open and can't stat -> ignore or error out
-        fprintf(stderr, "opendir/lstat failed on '%s'\n", path);
-        return 0;
+        fprintf(stderr, "du: %s: No such path or directory\n", path);
+        exit(EXIT_FAILURE);
     }
 
     size_t dir_total = 0;
@@ -86,14 +89,29 @@ size_t traverse(bool all, char *path, struct output **entries_ptr, size_t *cap_p
     while ((entry = readdir(dir)) != NULL) {
         const char *name = entry->d_name;
 
+        //skip the current and the previous directories to avoid inf loop 
         if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
 
         // create child_path = path + "/" + name
         size_t len = strlen(path) + strlen(name) + 2; // '/' + '\0'
         char *child_path = malloc(len);
-        if (!child_path) { perror("malloc"); exit(EXIT_FAILURE); }
+        if (!child_path) { 
+            perror("malloc"); 
+            exit(EXIT_FAILURE); 
+        }
 
-        snprintf(child_path, len, "%s/%s", path, name);
+        int n = snprintf(child_path, len, "%s/%s", path, name);
+        if (n < 0) {
+            // formatting error
+            perror("snprintf");
+            exit(EXIT_FAILURE);
+        }
+
+        if ((size_t)n >= len) {
+            // buffer too small — output truncated
+            fprintf(stderr, "snprintf: buffer too small\n");
+            exit(EXIT_FAILURE);
+        }
 
         size_t child_total = traverse(all, child_path, entries_ptr, cap_ptr, used_ptr);
         dir_total += child_total;
@@ -107,7 +125,10 @@ size_t traverse(bool all, char *path, struct output **entries_ptr, size_t *cap_p
     };
     vector_append(entries_ptr, cap_ptr, used_ptr, item);
 
-    closedir(dir);
+    if (closedir(dir) == -1) {
+        perror("closedir");
+        exit(EXIT_FAILURE);   // or handle appropriately
+    }
     return dir_total;
 }
 
@@ -173,13 +194,19 @@ int main(int args, char* argv[]){
     size_t vector_size = DEFAULT_VECTOR_SIZE;
     size_t vector_used = 0; 
     struct output* entries = (struct output*) malloc(sizeof(struct output) * vector_size); 
-
-    //a;sdlkfjas;dfkj;aslfdkj;aslkdfjs;aldkfj;salkdfj;alskdjf;lsajdkf must check for issues here 
+    if (entries == NULL){
+        perror("malloc");
+        exit(EXIT_FAILURE); 
+    }
 
     parse(args, argv, &all, &directory); 
 
     //make a copy such that we don't get the free error 
     directory = strdup(directory); 
+    if (directory == NULL) {
+        perror("strdup");
+        exit(EXIT_FAILURE);   // or handle gracefully
+    }
 
     traverse(all, directory, &entries, &vector_size, &vector_used); 
 

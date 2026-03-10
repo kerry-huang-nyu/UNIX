@@ -1,0 +1,2 @@
+echo hello >> appendoutput.txt
+grep hello < test.md > output.txt

@@ -73,6 +73,7 @@ int main(){
             }
             last_status = execute(argc, argv);
         }
+        free(argv); 
     }
 
     return 0; 
